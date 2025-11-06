@@ -72,50 +72,53 @@ def parseTheoremOrLemma (n: Name) (stx: Syntax) (fileMap: FileMap) : IO (Option 
 
     return none
 
--- partial def traverseITreeUnit (t : InfoTree) (contextInfo : Option ContextInfo) : IO Unit := do
---   match t with
---   | .node i c =>
---     for ch in c do
---       traverseITreeUnit ch contextInfo
-
---   | .context partialInfo t =>
---     let newContext := partialInfo.mergeIntoOuter? contextInfo
---     traverseITreeUnit t newContext
-
---   | .hole _ =>
-    -- dbg_trace f!"Found hole"
-
--- set_option maxHeartbeats 1000000
 
 
-def checkForTheoremInfo (i : Info) (c : Lean.PersistentArray InfoTree) (inputCtx : Lean.Parser.InputContext): IO (Option TheoremInfo) := do
+open Lean in
+/--
+Returns a list of all parent decl names in the InfoTree
+-/
+partial def findParentDecls (iTree : InfoTree) : List Name :=
+  match iTree with
+  | .node i c => c.foldl (fun acc el => acc ++ findParentDecls el) []
+  | .context (.parentDeclCtx n) t => n :: findParentDecls t
+  | .context _ t => findParentDecls t
+  | .hole _ => []
+
+
+open Lean in
+
+
+#check Lean.Server.registerLspRequestHandler
+#check Lean.Name
+#check Lean.Parser.Command.declaration
+#check Lean.Parser.Command.declId
+
+open Lean in
+def checkForTheoremInfo (i : Info) (c : Lean.PersistentArray InfoTree) (contextInfo : Option ContextInfo) (inputCtx : Lean.Parser.InputContext): IO (Option TheoremInfo) := do
   match i with
   | .ofCommandInfo e =>
     let ⟨_, stx⟩ := e
     match stx with
     | `($_:declModifiers theorem $id:declId $dSig:declSig $dVal:declVal) =>
-      if h: c.size >= 2 then
-        let c1 := c[0]
-        let c2 := c[1]
-        match c1 with
-        | .context (.commandCtx i1) (.context (.parentDeclCtx n1) t1) =>
-          let theoremRange? : Option TheoremInfo := do
-            let range ← stxLspRange stx inputCtx.fileMap
-            let sigRange ← stxLspRange dSig.raw inputCtx.fileMap
-            let valRange ← stxLspRange dVal.raw inputCtx.fileMap
-            let ti : TheoremInfo := {
-              name := toString n1,
-              sigRange := sigRange,
-              valRange := valRange,
-              range := range
-            }
-            return ti
-          return theoremRange?
-        | _ => return none
-      else
-        return none
+      let theoremRange? : Option TheoremInfo := do
+        let range ← stxLspRange stx inputCtx.fileMap
+        let sigRange ← stxLspRange dSig.raw inputCtx.fileMap
+        let valRange ← stxLspRange dVal.raw inputCtx.fileMap
+        let cInfo ← contextInfo
+        let idStx ← id.raw[0]?
+        let n := cInfo.currNamespace.append idStx.getId
+        let ti : TheoremInfo := {
+          name := toString n,
+          sigRange := sigRange,
+          valRange := valRange,
+          range := range
+        }
+        return ti
+      return theoremRange?
     | _ => return none
   | _ => return none
+
 
 
 #check Info
@@ -128,7 +131,7 @@ partial def traverseITree
   (inputCtx: InputContext): IO (Option TheoremInfo):= do
   match t with
   | .node i c =>
-    let ti? ← checkForTheoremInfo i c inputCtx
+    let ti? ← checkForTheoremInfo i c contextInfo inputCtx
     if let some ti := ti? then
       return ti
     -- Continue traversal
@@ -143,29 +146,9 @@ partial def traverseITree
     let newContext := partialInfo.mergeIntoOuter? contextInfo
     traverseITree t newContext inputCtx
 
-  | .hole _ => return none
+  | .hole _ =>
+    return none
 
-
-
-open Lean in
-open Lean.Parser.Command in
-def getDecl (parentName: Option Name) (t : InfoTree) (fileMap: FileMap): IO (Option TheoremInfo) := do
-  match t with
-  | .node (.ofCommandInfo e) c =>
-    let ⟨_, stx⟩ := e
-    if let some n := parentName then
-      parseTheoremOrLemma n stx fileMap
-    else
-      -- let noDeclFmt ← InfoTree.format t
-      -- dbg_trace noDeclFmt
-      return none
-  | .context (.parentDeclCtx n) t =>
-    -- dbg_trace s!"Getting ranges for {n}"
-    getDecl n t fileMap
-  | .context _ t =>
-    -- dbg_trace s!"Getting ranges for ??"
-    getDecl parentName t fileMap
-  | _ => return none
 
 
 #check InfoTree
@@ -174,7 +157,7 @@ def getDecl (parentName: Option Name) (t : InfoTree) (fileMap: FileMap): IO (Opt
 open Lean.Parser in
 def theoremInfosFromState (state : Frontend.State) (ctx : InputContext): IO (Array TheoremInfo) := do
   let infoTrees := state.commandState.infoState.trees
-  -- dbg_trace s!"Got {infoTrees.size} info trees"
+  dbg_trace s!"Got {infoTrees.size} info trees"
   if let Except.error s := validateTopLevelInfoTrees infoTrees then
     panic! s!"{s}\nAssumption about top level info trees invalid."
   else
