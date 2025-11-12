@@ -8,4 +8,5 @@ lean_lib LlmInstruments
 @[default_target]
 lean_exe «llm-instruments» {
   root := `Main
+  supportInterpreter := true
 }

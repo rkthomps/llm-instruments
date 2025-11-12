@@ -30,3 +30,5 @@ theorem foo : True :=
 
 theorem bar : False :=
   sorry
+
+#check Nat.add_comm
