@@ -10,3 +10,8 @@ lean_exe «llm-instruments» {
   root := `Main
   supportInterpreter := true
 }
+
+lean_exe «llm-instruments-server» {
+  root := `Server
+  supportInterpreter := true
+}

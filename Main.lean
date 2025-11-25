@@ -1,4 +1,6 @@
+import Lean
 import LlmInstruments.FindTheorems
+import LlmInstruments.FindTheoremsLsp
 
 
 structure TheoremInfoArguments where
@@ -43,6 +45,13 @@ def parseArgs (args : List String) : IO Command := do
     return Command.theoremInfo (← parseTheoremInfoArgs args')
   | _ => throw (IO.userError "Expected command: [heartbeat, theorem-info]")
 
+open Lean.Server in
+builtin_initialize
+  registerLspRequestHandler
+    "$/lean/findTheorems"
+    FindTheoremsParams
+    FindTheoremsResult
+    handleFindTheorems
 
 unsafe def main (args : List String) : IO Unit := do
   let command ← parseArgs args
