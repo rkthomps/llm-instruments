@@ -147,14 +147,14 @@ partial def traverseITree
 
 
 def theoremInfosFromTrees (infoTrees : Lean.PersistentArray InfoTree) (fileMap : FileMap) : IO (Array TheoremInfo) := do
-  dbg_trace s!"Got {infoTrees.size} info trees"
+  -- dbg_trace s!"Got {infoTrees.size} info trees"
   if let Except.error s := validateTopLevelInfoTrees infoTrees then
     panic! s!"{s}\nAssumption about top level info trees invalid."
   else
     let mut theorems : Array TheoremInfo := #[]
     for t in infoTrees do
       let tFmt ← InfoTree.format t
-      dbg_trace f!"{tFmt}"
+      -- dbg_trace f!"{tFmt}"
       let ti? ← traverseITree t none fileMap
       if let some ti := ti? then
         theorems := theorems.push ti
@@ -169,7 +169,7 @@ def theoremInfosFromTrees (infoTrees : Lean.PersistentArray InfoTree) (fileMap :
 open Lean.Parser in
 def theoremInfosFromState (state : Frontend.State) (ctx : InputContext): IO (Array TheoremInfo) := do
   let infoTrees := state.commandState.infoState.trees
-  dbg_trace s!"Got {infoTrees.size} info trees"
+  -- dbg_trace s!"Got {infoTrees.size} info trees"
   if let Except.error s := validateTopLevelInfoTrees infoTrees then
     panic! s!"{s}\nAssumption about top level info trees invalid."
   else
