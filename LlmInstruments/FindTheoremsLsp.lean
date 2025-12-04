@@ -41,9 +41,13 @@ def handleFindTheoremsReqT : RequestT CommandElabM FindTheoremsResult := do
   liftM handleFindTheoremsCommand
 
 
-def myMapTask (t : Task α) (f : α → RequestM β) : RequestM (RequestTask β) := do
-  let rc ← readThe RequestContext
-  EIO.mapTask (f · rc) t
+def runSnapShots (snaps : List Snapshots.Snapshot) : RequestM FindTheoremsResult := do
+    match snaps with
+    | [] => return ⟨#[]⟩
+    | s :: ss =>
+      let sInfo ← runCommandElabM s handleFindTheoremsReqT
+      let rest ← runSnapShots ss
+      return { theorems := (sInfo.theorems ++ rest.theorems) }
 
 
 open Lean.Server in
@@ -53,11 +57,5 @@ partial def handleFindTheorems (_ : FindTheoremsParams)
   let doc ← readDoc
   -- bad: we have to wait on elaboration of the entire file before we can report document symbols
   let t := doc.cmdSnaps.waitAll
-  myMapTask t fun (snaps, _) => do
-    match h : snaps with
-    | [] =>
-      dbg_trace s!"No snaps."
-      return ⟨#[]⟩
-    | s :: ss =>
-      let lastSnap := snaps.getLast (by simp_all)
-      runCommandElabM lastSnap handleFindTheoremsReqT
+  mapTask t fun (snaps, _) => do
+    runSnapShots snaps

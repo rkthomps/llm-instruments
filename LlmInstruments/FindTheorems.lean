@@ -153,6 +153,8 @@ def theoremInfosFromTrees (infoTrees : Lean.PersistentArray InfoTree) (fileMap :
   else
     let mut theorems : Array TheoremInfo := #[]
     for t in infoTrees do
+      let tFmt ← InfoTree.format t
+      dbg_trace f!"{tFmt}"
       let ti? ← traverseITree t none fileMap
       if let some ti := ti? then
         theorems := theorems.push ti
