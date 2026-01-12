@@ -32,3 +32,7 @@ theorem bar : False :=
   sorry
 
 #check Nat.add_comm
+
+
+theorem foo_two : True := by
+  theo bar

@@ -12,6 +12,10 @@ def getErrorsStr (ml : MessageLog) : IO String := do
   return errorTxt
 
 
+
+#check Lean.Elab.IO.processCommandsIncrementally
+
+
 open Lean in
 open Lean.Elab in
 /--
@@ -21,7 +25,7 @@ Notes:
   - Can infer the workspace because this instrumentation will be running
     within the workspace.
 -/
-unsafe def runFile (file : String) : IO (Except String (Frontend.State × Parser.InputContext)) := do
+unsafe def runFile (file : String) : IO (Except String (IncrementalState × Parser.InputContext)) := do
   let fileContents ← IO.FS.readFile file
   let fileCtx := Parser.mkInputContext fileContents file
   let (fileHeader, parState, messages) ← Parser.parseHeader fileCtx
@@ -39,5 +43,5 @@ unsafe def runFile (file : String) : IO (Except String (Frontend.State × Parser
     return Except.error s!"{errStr}\nThere was an error elaborating the imports of file {file}"
 
   let sheetCmdState : Command.State := Command.mkState fileHeadEnv fileMsgs {}
-  let sheetFrontEndState ← IO.processCommands fileCtx parState sheetCmdState
+  let sheetFrontEndState ← IO.processCommandsIncrementally fileCtx parState sheetCmdState none
   return (Except.ok (sheetFrontEndState, fileCtx))

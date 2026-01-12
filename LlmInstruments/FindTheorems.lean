@@ -175,5 +175,5 @@ unsafe def findTheorems (file : String) : IO (Except String (Array TheoremInfo))
   match fileResult? with
   | Except.error e => return Except.error e
   | Except.ok (state, ctx) =>
-    let theorems ← theoremInfosFromState state ctx
+    let theorems ← theoremInfosFromState state.toState ctx
     return Except.ok theorems
