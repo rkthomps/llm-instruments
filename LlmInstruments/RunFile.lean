@@ -4,6 +4,8 @@ get the resulting information.
 -/
 import Lean
 
+namespace LlmInstruments
+
 open Lean in
 def getErrorsStr (ml : MessageLog) : IO String := do
   let errorMsgs := ml.toList.filter (λ m => m.severity == .error)

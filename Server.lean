@@ -1,5 +1,7 @@
 import Lean
-import LlmInstruments.FindTheoremsLsp
+import LlmInstruments
+
+open LlmInstruments
 
 open Lean.Server in
 builtin_initialize

@@ -2,6 +2,21 @@
 import Lean.Parser.Command
 open Lean
 
+theorem test (n : Nat): True := by
+  cases n with
+  | zero => simp
+  | succ n =>
+    have bar := Nat.add_comm
+    have foo : True := by trivial
+    simp_all
+
+-- theorem test (n : Nat): True := by
+--   induction n with
+--   | zero => simp
+--   | succ n ih =>
+--     have foo : True := by trivial
+--     simp_all [ih]
+
 -- higher priority to override the one in Batteries
 /-- `lemma` means the same as `theorem`. It is used to denote "less important" theorems -/
 syntax (name := lemma) (priority := default + 1) declModifiers
