@@ -1,4 +1,3 @@
-import Lean
 import LlmInstruments
 
 namespace LlmInstruments
@@ -52,14 +51,6 @@ def parseArgs (args : List String) : IO Command := do
   | _ => throw (IO.userError "Expected command: [heartbeat, theorem-info]")
 
 end LlmInstruments
-
-open Lean.Server in
-builtin_initialize
-  registerLspRequestHandler
-    "$/lean/findTheorems"
-    FindTheoremsParams
-    FindTheoremsResult
-    handleFindTheorems
 
 unsafe def main (args : List String) : IO Unit := do
   let command ← LlmInstruments.parseArgs args
