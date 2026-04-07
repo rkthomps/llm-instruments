@@ -1,8 +1,14 @@
-import LlmInstruments.FindTheorems
+import LlmInstruments
 
+namespace LlmInstruments
 
 structure TheoremInfoArguments where
   filePath : String
+
+
+structure ExtendedTheoremInfo extends TheoremInfo where
+  bagOfTactics : List TacticInfo
+deriving Lean.ToJson
 
 
 /--
@@ -17,7 +23,8 @@ unsafe def runTheoremInfoCommand (args : TheoremInfoArguments) : IO Unit := do
   match theoremInfo with
   | Except.error e => throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
   | Except.ok ti =>
-    IO.print (Lean.toJson ti)
+    let extendedInfos : Array ExtendedTheoremInfo := ti.map (fun t => { t with bagOfTactics := getTactics t.stx })
+    IO.print (Lean.toJson extendedInfos)
 
 
 inductive Command where
@@ -43,7 +50,8 @@ def parseArgs (args : List String) : IO Command := do
     return Command.theoremInfo (← parseTheoremInfoArgs args')
   | _ => throw (IO.userError "Expected command: [heartbeat, theorem-info]")
 
+end LlmInstruments
 
 unsafe def main (args : List String) : IO Unit := do
-  let command ← parseArgs args
-  runCommand command
+  let command ← LlmInstruments.parseArgs args
+  LlmInstruments.runCommand command
