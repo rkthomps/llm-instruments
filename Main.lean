@@ -29,14 +29,15 @@ def breadthSampleArguments (proportion : Float) : ProofSampleArguments :=
   { expandProportion := proportion, depthWeight := -1.0, temperature := 0.0, seed := 0 }
 
 
-instance : Monad List where
-  pure := List.pure
-  bind := List.bind
+-- instance : Monad List where
+--   pure := pu
+--   bind := List.bind
+-- instance : Monad List := inferInstance
 
 
-def defaultSampleQueries : List ProofSampleArguments := do
-  let p ← [0.25, 0.5, 0.75]
-  [depthSampleArguments p, breadthSampleArguments p]
+def defaultSampleQueries : List ProofSampleArguments :=
+  [0.25, 0.5, 0.75].flatMap fun p =>
+    [depthSampleArguments p, breadthSampleArguments p]
 
 
 structure ExtendedTheoremInfo extends TheoremInfo where

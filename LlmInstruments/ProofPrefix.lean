@@ -102,7 +102,7 @@ partial def getExpandCandidates
   | .raw _ => return #[]
   | .node info k args =>
     let mut candidates := #[]
-    for (a, i) in args.zipWithIndex do
+    for (a, i) in args.zipIdx do
       let newReconstructFn childHidden := reconstructFn (.node info k (args.set! i childHidden))
       candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
     return candidates
@@ -112,7 +112,7 @@ partial def getExpandCandidates
     let remainingChildren := countHiddenChildren args[hideIdx:].toArray
     if remainingChildren <= 1 then
       let mut candidates := #[]
-      for (a, i) in args[:hideIdx].toArray.zipWithIndex do
+      for (a, i) in args[:hideIdx].toArray.zipIdx do
         let newReconstructFn childHidden := reconstructFn (.node info `null (args.set! i childHidden))
         candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
       let visitIdx ← get
@@ -122,7 +122,7 @@ partial def getExpandCandidates
     else
       let mut nextHideIdx := none
       let mut candidates := #[]
-      for (a, i) in args.zipWithIndex do
+      for (a, i) in args.zipIdx do
         if i < hideIdx then
           let newReconstructFn childHidden := reconstructFn (.hiddenChildren info (args.set! i childHidden) hideIdx)
           candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
@@ -181,7 +181,7 @@ instance : Ord (Int × Int) := lexOrd
 instance : Ord (Int × (Int × Int)) := lexOrd
 
 def minFn {α : Type} [Ord α] (scoreFn : ExpandCandidate → α) : SelectFn := fun arr harr =>
-  let first := arr.get ⟨0, by omega⟩
+  let first := arr[0]
   let min := arr.foldl (fun best c => if compare (scoreFn c) (scoreFn best) == .lt then c else best) first
   return min
 
@@ -191,7 +191,7 @@ def selectBreadth : SelectFn := minFn fun c => (Int.ofNat c.depth, Int.ofNat c.c
 
 
 def selectDepthWeighted (depthWeight temperature : Float) : SelectFn := fun arr harr => do
-  let first := arr.get ⟨0, by omega⟩
+  let first := arr[0]
   let scoreFn c := depthWeight * Float.ofNat c.depth
   let firstScore := scoreFn first
   let scores := arr.map scoreFn
