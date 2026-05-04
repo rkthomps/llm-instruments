@@ -1,13 +1,48 @@
+import Lean
 import LlmInstruments
 
+open Lean
 namespace LlmInstruments
 
 structure TheoremInfoArguments where
   filePath : String
 
+structure ProofSampleArguments where
+  expandProportion : Float
+  depthWeight : Float -- > 0 means prefer deeper nodes, < 0 means prefer shallower nodes
+  temperature : Float -- 0: always pick the best candidate, higher values increase randomness
+  seed : Nat
+deriving Lean.ToJson
+
+
+structure ProofSample where
+  groundTruth : String
+  sample : String
+  arguments : ProofSampleArguments
+deriving Lean.ToJson
+
+
+def depthSampleArguments (proportion : Float) : ProofSampleArguments :=
+  { expandProportion := proportion, depthWeight := 1.0, temperature := 0.0, seed := 0 }
+
+def breadthSampleArguments (proportion : Float) : ProofSampleArguments :=
+  { expandProportion := proportion, depthWeight := -1.0, temperature := 0.0, seed := 0 }
+
+
+instance : Monad List where
+  pure := List.pure
+  bind := List.bind
+
+
+def defaultSampleQueries : List ProofSampleArguments := do
+  let p ← [0.25, 0.5, 0.75]
+  [depthSampleArguments p, breadthSampleArguments p]
+
 
 structure ExtendedTheoremInfo extends TheoremInfo where
   bagOfTactics : List TacticInfo
+  numExpands : Nat
+  samples : List ProofSample
 deriving Lean.ToJson
 
 
@@ -18,12 +53,32 @@ a 0 exit code to show that the instruments exist.
 def runHeartbeatCommand : IO Unit := do
   return ()
 
+
+def extendTheoremInfo (ti : TheoremInfoAndStx) : MetaM ExtendedTheoremInfo := do
+  let bagOfTactics := getTactics ti.stx
+  let initialHidden := createInitialHiddenTacticSyntax ti.stx
+  let numExpands := initialHidden.getExpandRange
+  let samples : List ProofSample ← defaultSampleQueries.mapM fun args => do
+    let sampleStx ← expandProportion ti.stx args.expandProportion (selectDepthWeighted args.depthWeight args.temperature) args.seed
+    let groundTruth ← Lean.PrettyPrinter.ppCategory `command ti.stx
+    let sample ← Lean.PrettyPrinter.ppCategory `command sampleStx
+    return { groundTruth := toString groundTruth, sample := toString sample, arguments := args }
+  return { ti.toTheoremInfo with bagOfTactics, numExpands, samples }
+
+
+def runMetaM (env : Environment) (m : MetaM α) : IO α := do
+  let ((a, _), _) ← (m.run).toIO
+    { fileName := "<runMetaM>", fileMap := default }
+    { env := env }
+  return a
+
+
 unsafe def runTheoremInfoCommand (args : TheoremInfoArguments) : IO Unit := do
-  let theoremInfo ← findTheorems args.filePath
-  match theoremInfo with
+  let result ← findTheorems args.filePath
+  match result with
   | Except.error e => throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
-  | Except.ok ti =>
-    let extendedInfos : Array ExtendedTheoremInfo := ti.map (fun t => { t with bagOfTactics := getTactics t.stx })
+  | Except.ok (env, ti) =>
+    let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo ti))
     IO.print (Lean.toJson extendedInfos)
 
 
