@@ -133,24 +133,28 @@ partial def getExpandCandidates
       | none => panic "Invariant violation: there should be at least one non-null child"
 
 
-def iterateExpand [Ord α] (numExpands : Nat) (hStx : HiddenTacticSyntax) (scoreFn : ExpandCandidate → α) : HiddenTacticSyntax :=
+
+abbrev SelectFn := (arr : Array ExpandCandidate) → (hArr : 0 < arr.size) → StateT StdGen Id ExpandCandidate
+
+def iterateExpand (numExpands : Nat) (hStx : HiddenTacticSyntax)
+  (select : SelectFn) : StateT StdGen Id HiddenTacticSyntax :=
   match numExpands with
-  | 0 => hStx
-  | n+1 =>
+  | 0 => pure hStx
+  | n+1 => do
     let candidates := Id.run ((getExpandCandidates hStx 0 id).run' 0)
-    if candidates.isEmpty then
+    if h : 0 = candidates.size then
       dbg_trace s!"No more candidates to expand after {numExpands} iterations."
-      hStx
+      pure hStx
     else
-      let bestCandidate := candidates.foldl (fun best c => if compare (scoreFn c) (scoreFn best) == .lt then c else best) candidates[0]!
-      -- dbg_trace s!"Candidate after iteration {numExpands}: {repr bestCandidate.expandResult}"
-      iterateExpand n bestCandidate.expandResult scoreFn
+      let selectedCandidate ← select candidates (by omega)
+      iterateExpand n selectedCandidate.expandResult select
 
 
-def expand [Ord α] (stx : Syntax) (numExpands : Nat) (scoreFn : ExpandCandidate → α) : MetaM Syntax := do
+def expand (stx : Syntax) (numExpands : Nat) (select : SelectFn) (seed : Nat := 0) : MetaM Syntax := do
+  let gen := mkStdGen seed
   let initialHidden := createInitialHiddenTacticSyntax stx
   -- dbg_trace s!"Initial hidden syntax: {repr initialHidden}"
-  let finalHidden := iterateExpand numExpands initialHidden scoreFn
+  let finalHidden := Id.run ((iterateExpand numExpands initialHidden select).run' gen)
   -- dbg_trace s!"Final hidden syntax: {repr finalHidden}"
   hiddenSyntaxToSyntaxWithSorry finalHidden
 
@@ -158,22 +162,49 @@ def expand [Ord α] (stx : Syntax) (numExpands : Nat) (scoreFn : ExpandCandidate
 instance : Ord (Int × Int) := lexOrd
 instance : Ord (Int × (Int × Int)) := lexOrd
 
+def minFn {α : Type} [Ord α] (scoreFn : ExpandCandidate → α) : SelectFn := fun arr harr =>
+  let first := arr.get ⟨0, by omega⟩
+  let min := arr.foldl (fun best c => if compare (scoreFn c) (scoreFn best) == .lt then c else best) first
+  return min
 
-def expandDepth (m : MetaM Syntax) (n : Nat) : MetaM Format := do
-  let stx ← m
-  let scoreFn (c : ExpandCandidate) := (-1 * Int.ofNat c.depth, -1 * Int.ofNat c.childIdx, Int.ofNat c.inOrderIdx)
-  let newStx ← expand stx n scoreFn
-  -- dbg_trace "{newStx}"
-  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
-  return rendered
 
-def expandBreadth (m : MetaM Syntax) (n : Nat) : MetaM Format := do
-  let stx ← m
-  let scoreFn (c : ExpandCandidate) := (Int.ofNat c.depth, Int.ofNat c.childIdx, Int.ofNat c.inOrderIdx)
-  let newStx ← expand stx n scoreFn
+def selectDepth : SelectFn := minFn fun c => (-1 * Int.ofNat c.depth, -1 * Int.ofNat c.childIdx, Int.ofNat c.inOrderIdx)
+def selectBreadth : SelectFn := minFn fun c => (Int.ofNat c.depth, Int.ofNat c.childIdx, Int.ofNat c.inOrderIdx)
+
+
+def selectDepthWeighted (depthWeight temperature : Float) : SelectFn := fun arr harr => do
+  let first := arr.get ⟨0, by omega⟩
+  let scoreFn c := depthWeight * Float.ofNat c.depth
+  let firstScore := scoreFn first
+  let scores := arr.map scoreFn
+  let maxScore := scores.foldl (fun acc s => if s > acc then s else acc) (firstScore)
+  let minScore := scores.foldl (fun acc s => if s < acc then s else acc) (firstScore)
+  let normalizedScores := scores.map (fun s => if maxScore == minScore then 1.0 else (s - minScore) / (maxScore - minScore))
+  if temperature == 0.0 then
+    return arr.foldl (fun best c => if scoreFn c > scoreFn best then c else best) first
+  let expScores := normalizedScores.map (fun s => Float.exp (s / temperature))
+  let totalScore := expScores.foldl (fun acc s => acc + s) 0
+  let precision := 1 <<< 30
+  let gen ← get
+  let (r, gen') := randNat gen 0 (precision - 1)
+  set gen'
+  let u : Float := Float.ofNat r / Float.ofNat precision
+  let mut cumulative := 0.0
+  for (c, expS) in arr.zip expScores do
+    cumulative := cumulative + expS / totalScore
+    if u < cumulative then
+      return c
+  panic! "Should never reach here"
+
+
+
+def showExpanded (select : SelectFn) (numExpands : Nat) (mstx : MetaM Syntax) (seed : Nat := 0) : MetaM Format := do
+  let stx ← mstx
+  let newStx ← expand stx numExpands select seed
   -- dbg_trace "{newStx}"
-  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
-  return rendered
+  Lean.PrettyPrinter.ppCategory `term newStx
+
+
 
 def test_straight : MetaM Syntax := `(term| by
   intros a b
@@ -182,8 +213,9 @@ def test_straight : MetaM Syntax := `(term| by
   exact bar
 )
 
-#eval (expandDepth test_straight 4)
-#eval (expandBreadth test_straight 4)
+#eval (showExpanded selectDepth 4 test_straight)
+#eval (showExpanded selectBreadth 4 test_straight)
+#eval (showExpanded (selectDepthWeighted 1.0 0.5) 4 test_straight)
 
 
 def test1 : MetaM Syntax := `(term| by
@@ -197,8 +229,9 @@ def test1 : MetaM Syntax := `(term| by
     have foo : True := by trivial
     simp_all)
 
-#eval (expandDepth test1 8)
-#eval (expandBreadth test1 8)
+#eval (showExpanded selectDepth 3 test1)
+#eval (showExpanded selectBreadth 8 test1)
+#eval (showExpanded (selectDepthWeighted 1.0 0.1) 4 (seed := 4) test1)
 
 def foo : MetaM Syntax := `(term| by
   cases n with
@@ -209,8 +242,8 @@ def foo : MetaM Syntax := `(term| by
     simp_all)
 
 
-#eval (expandDepth foo 6)
-#eval (expandBreadth foo 3)
+#eval (showExpanded selectDepth 6 foo)
+#eval (showExpanded selectBreadth 3 foo)
 
 
 def foo1 : MetaM Syntax := `(term| by
@@ -223,9 +256,8 @@ def foo1 : MetaM Syntax := `(term| by
 #eval foo1
 
 
-#eval (expandDepth foo1 3)
-
-#eval (expandBreadth foo1 0)
+#eval (showExpanded selectDepth 3 foo1)
+#eval (showExpanded selectBreadth 0 foo1)
 
 
 def bar : MetaM Syntax := `(term| by
@@ -334,6 +366,5 @@ def bar : MetaM Syntax := `(term| by
               cases b <;> contradiction
 )
 
-#eval (expandDepth bar 50)
-
-#eval (expandBreadth bar 50)
+#eval (showExpanded selectDepth 50 bar)
+#eval (showExpanded selectBreadth 50 bar)
