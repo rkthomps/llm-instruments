@@ -14,18 +14,6 @@ def sorryStx : MetaM Syntax := `(tactic| sorry)
 
 #eval sorrySeqStx
 
--- partial def stripTacticsDepth (stx : Syntax) (depth : Nat) : MetaM Syntax :=
---   match depth, stx with
---   | 0, .node _ `Lean.Parser.Tactic.tacticSeq _ => sorryStx
---   | 0, .node i k a => do
---     return .node i k (← a.mapM (fun c => stripTacticsDepth c 0))
---   | d+1, .node i k a => do
---     if (isTactic stx).isSome then
---       return .node i k (← a.mapM (fun c => stripTacticsDepth c d))
---     else
---       return .node i k (← a.mapM (fun c => stripTacticsDepth c depth))
---   | _, s => return s
-
 
 
 /--
@@ -37,7 +25,7 @@ inductive HiddenTacticSyntax where
   /-- Hide children hideIdx onward. Note that this index also applies to "null" children
       invariant: there will always be at least one non-null child in hiddenChildren -/
   | hiddenChildren (i : Lean.SourceInfo) (args : Array HiddenTacticSyntax) (hideIdx : Nat)
-deriving Inhabited
+deriving Inhabited, Repr
 
 def HiddenTacticSyntax.getKind : HiddenTacticSyntax → SyntaxNodeKind
   | .raw stx => stx.getKind
@@ -93,8 +81,9 @@ partial def hiddenSyntaxToSyntaxWithSorry (hs : HiddenTacticSyntax) : MetaM Synt
 
 structure ExpandCandidate where
   inOrderIdx : Nat
-  expandResult : HiddenTacticSyntax
   depth : Nat
+  childIdx: Nat
+  expandResult : HiddenTacticSyntax
 deriving Inhabited
 
 
@@ -114,12 +103,15 @@ partial def getExpandCandidates
     -- invariant: there will always be at least one non-null child in args
     -- if expanding the node reveals all children, then we replace this node with a hiddennode, and create hidden nodes for each child
     let remainingChildren := countHiddenChildren args[hideIdx:].toArray
-    if remainingChildren == 0 then
+    if remainingChildren <= 1 then
       let mut candidates := #[]
-      for (a, i) in args.zipWithIndex do
+      for (a, i) in args[:hideIdx].toArray.zipWithIndex do
         let newReconstructFn childHidden := reconstructFn (.node info `null (args.set! i childHidden))
         candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
-      return candidates
+      let visitIdx ← get
+      set (visitIdx + 1)
+      let expandResult := reconstructFn (HiddenTacticSyntax.node info `null args)
+      return candidates.append #[{ inOrderIdx := visitIdx, expandResult := expandResult, depth := depth, childIdx := hideIdx }]
     else
       let mut nextHideIdx := none
       let mut candidates := #[]
@@ -137,232 +129,76 @@ partial def getExpandCandidates
         let visitIdx ← get
         set (visitIdx + 1)
         let expandResult := reconstructFn (HiddenTacticSyntax.hiddenChildren info args idx)
-        return candidates.append #[{ inOrderIdx := visitIdx, expandResult := expandResult, depth := depth}]
+        return candidates.append #[{ inOrderIdx := visitIdx, expandResult := expandResult, depth := depth, childIdx := hideIdx }]
       | none => panic "Invariant violation: there should be at least one non-null child"
 
 
-def iterateExpand (numExpands : Nat) (hStx : HiddenTacticSyntax) (scoreFn : ExpandCandidate → Float) : HiddenTacticSyntax :=
+def iterateExpand [Ord α] (numExpands : Nat) (hStx : HiddenTacticSyntax) (scoreFn : ExpandCandidate → α) : HiddenTacticSyntax :=
   match numExpands with
   | 0 => hStx
   | n+1 =>
     let candidates := Id.run ((getExpandCandidates hStx 0 id).run' 0)
     if candidates.isEmpty then
+      dbg_trace s!"No more candidates to expand after {numExpands} iterations."
       hStx
     else
-      let bestCandidate := candidates.foldl (fun best c => if scoreFn c > scoreFn best then c else best) candidates[0]!
+      let bestCandidate := candidates.foldl (fun best c => if compare (scoreFn c) (scoreFn best) == .lt then c else best) candidates[0]!
+      -- dbg_trace s!"Candidate after iteration {numExpands}: {repr bestCandidate.expandResult}"
       iterateExpand n bestCandidate.expandResult scoreFn
 
 
-def expand (stx : Syntax) (numExpands : Nat) (scoreFn : ExpandCandidate → Float) : MetaM Syntax := do
+def expand [Ord α] (stx : Syntax) (numExpands : Nat) (scoreFn : ExpandCandidate → α) : MetaM Syntax := do
   let initialHidden := createInitialHiddenTacticSyntax stx
+  -- dbg_trace s!"Initial hidden syntax: {repr initialHidden}"
   let finalHidden := iterateExpand numExpands initialHidden scoreFn
+  -- dbg_trace s!"Final hidden syntax: {repr finalHidden}"
   hiddenSyntaxToSyntaxWithSorry finalHidden
 
 
-/--
-Replaces tacics at depth >= depth with `sorry`
-Depth is the depth of tactic nesting. Depth 0 means the top-level will be replaced with `sorry`.
--/
-partial def stripTacticsBreadth (stx : Syntax) (depth width : Nat) : MetaM Syntax :=
-  match depth, width, stx with
-  | 0, 0, .node _ `Lean.Parser.Tactic.tacticSeq _ => sorrySeqStx
-
-  | 0, w, .node i `Lean.Parser.Tactic.tacticSeq1Indented a => do
-    let childSeq := a[0]!
-    match childSeq with
-    | .node ci `null ca => do
-      let newChildren ← ca[:(2 * w)].toArray.mapM (fun c => stripTacticsBreadth c 1 0)
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (newChildren.append #[← sorryStx])
-      ]
-    | _ => panic "Unexpected syntax structure"
-
-  | 0, w, .node i `Lean.Parser.Tactic.tacticSeqBracketed a => do
-    let childSeq := a[1]!
-    match childSeq with
-    | .node ci `null ca => do
-      let newChildren ← ca[:(2 * w)].toArray.mapM (fun c => stripTacticsBreadth c 1 0)
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (#[a[0]!].append ((newChildren.append #[(← sorryStx)]).push a[2]!))
-      ]
-    | _ => panic "Unexpected syntax structure"
-
-  | 0, w, .node i k a => do
-    return .node i k (← a.mapM (fun c => stripTacticsBreadth c 0 w))
-  | d+1, w, .node i k a => do
-    if (isTactic stx).isSome then
-      return .node i k (← a.mapM (fun c => stripTacticsBreadth c d w))
-    else
-      return .node i k (← a.mapM (fun c => stripTacticsBreadth c depth w))
-  | _, _, s => return s
+instance : Ord (Int × Int) := lexOrd
+instance : Ord (Int × (Int × Int)) := lexOrd
 
 
-partial def stripTacticsDepth (stx : Syntax) (depth width : Nat) : MetaM Syntax :=
-  match depth, width, stx with
-  | 0, _, .node _ `Lean.Parser.Tactic.tacticSeq _ => sorrySeqStx
+def expandDepth (m : MetaM Syntax) (n : Nat) : MetaM Format := do
+  let stx ← m
+  let scoreFn (c : ExpandCandidate) := (-1 * Int.ofNat c.depth, -1 * Int.ofNat c.childIdx, Int.ofNat c.inOrderIdx)
+  let newStx ← expand stx n scoreFn
+  -- dbg_trace "{newStx}"
+  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
+  return rendered
 
-  | d, w, .node i `Lean.Parser.Tactic.tacticSeq1Indented a => do
-    let childSeq := a[0]!
-    match childSeq with
-    | .node ci `null ca => do
-      let newChildren ← ca[:(2 * w)].toArray.mapM (fun c => stripTacticsDepth c d w)
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (newChildren.append #[← sorryStx])
-      ]
-    | _ => panic "Unexpected syntax structure"
+def expandBreadth (m : MetaM Syntax) (n : Nat) : MetaM Format := do
+  let stx ← m
+  let scoreFn (c : ExpandCandidate) := (Int.ofNat c.depth, Int.ofNat c.childIdx, Int.ofNat c.inOrderIdx)
+  let newStx ← expand stx n scoreFn
+  -- dbg_trace "{newStx}"
+  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
+  return rendered
 
-  | d, w, .node i `Lean.Parser.Tactic.tacticSeqBracketed a => do
-    let childSeq := a[1]!
-    match childSeq with
-    | .node ci `null ca => do
-      let newChildren ← ca[:(2 * w)].toArray.mapM (fun c => stripTacticsDepth c d w)
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (#[a[0]!].append ((newChildren.append #[(← sorryStx)]).push a[2]!))
-      ]
-    | _ => panic "Unexpected syntax structure"
+def test_straight : MetaM Syntax := `(term| by
+  intros a b
+  have h1 := h2
+  have h2 := h1
+  exact bar
+)
 
-  | d+1, w, .node i k a => do
-    if (isTactic stx).isSome then
-      return .node i k (← a.mapM (fun c => stripTacticsDepth c d w))
-    else
-      return .node i k (← a.mapM (fun c => stripTacticsDepth c depth w))
-
-  | 0, w, .node i k a => do
-    return .node i k (← a.mapM (fun c => stripTacticsDepth c 0 w))
-
-  | _, _, s => return s
+#eval (expandDepth test_straight 4)
+#eval (expandBreadth test_straight 4)
 
 
-partial def expandSorrysDepth (stx : Syntax) : StateT Nat MetaM Syntax := do
-  let fuel ← get
-  match fuel, stx with
-  | 0, .node _ `Lean.Parser.Tactic.tacticSeq _ => sorrySeqStx
+def test1 : MetaM Syntax := `(term| by
+  cases n with
+  | zero =>
+    simp
+    cases h with
+    | intro h1 h2 => simp
+  | succ n =>
+    have bar := Nat.add_comm
+    have foo : True := by trivial
+    simp_all)
 
-  | f, .node i `Lean.Parser.Tactic.tacticSeq1Indented a => do
-    let childSeq := a[0]!
-    match childSeq with
-    | .node ci `null ca => do
-      let mut newChildren := #[]
-      for c in ca do
-        if c.getKind == `null then
-          newChildren := newChildren.push c
-        else
-          let curFuel ← get
-          if curFuel > 0 then
-            let expanded ← expandSorrysDepth c
-            newChildren := newChildren.push expanded
-          else
-            newChildren := newChildren.push (← sorryStx)
-            break
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (newChildren.append #[← sorryStx])
-      ]
-    | _ => panic "Unexpected syntax structure"
-
-  | f, .node i `Lean.Parser.Tactic.tacticSeqBracketed a => do
-    let childSeq := a[1]!
-    match childSeq with
-    | .node ci `null ca => do
-      let mut newChildren := #[]
-      for c in ca do
-        if c.getKind == `null then
-          newChildren := newChildren.push c
-        else
-          let curFuel ← get
-          if curFuel > 0 then
-            let expanded ← expandSorrysDepth c
-            newChildren := newChildren.push expanded
-          else
-            newChildren := newChildren.push (← sorryStx)
-            break
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (newChildren.append #[← sorryStx])
-      ]
-    | _ => panic "Unexpected syntax structure"
-
-  | 0, .node i k a => do
-    return .node i k (← a.mapM (fun c => expandSorrysDepth c))
-  | f+1, .node i k a => do
-    if (isTactic stx).isSome then
-      set f
-      return .node i k (← a.mapM (fun c => expandSorrysDepth c))
-    else
-      return .node i k (← a.mapM (fun c => expandSorrysDepth c))
-  | _, s => return s
-
-
-def isRealChild (c : Syntax) : Bool :=
-  c.getKind != `null
-
-def countChildren (children : Array Syntax) : Nat :=
-  children.foldl (fun acc c => acc + if isRealChild c then 1 else 0) 0
-
-
-partial def expandSorrysBreadth (stx : Syntax) : StateT Nat MetaM Syntax := do
-  let fuel ← get
-  match fuel, stx with
-  | 0, .node _ `Lean.Parser.Tactic.tacticSeq _ => sorrySeqStx
-
-  | f, .node i `Lean.Parser.Tactic.tacticSeq1Indented a => do
-    let childSeq := a[0]!
-    match childSeq with
-    | .node ci `null ca => do
-      let childCount := countChildren ca
-      let baseAllocation := fuel / childCount
-      let mut remainingFuel := fuel % childCount
-      let mut newChildren := #[]
-      for c in ca do
-        if c.getKind == `null then
-          newChildren := newChildren.push c
-        else
-          let mut allocation := baseAllocation
-          if 0 < remainingFuel then
-            allocation := allocation + 1
-            remainingFuel := remainingFuel - 1
-          if 0 < allocation then
-            let expanded ← (expandSorrysBreadth c).run allocation
-            newChildren := newChildren.push expanded
-          else
-            newChildren := newChildren.push (← sorryStx)
-            break
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (newChildren.append #[← sorryStx])
-      ]
-    | _ => panic "Unexpected syntax structure"
-
-  | f, .node i `Lean.Parser.Tactic.tacticSeqBracketed a => do
-    let childSeq := a[1]!
-    match childSeq with
-    | .node ci `null ca => do
-      let mut newChildren := #[]
-      for c in ca do
-        if c.getKind == `null then
-          newChildren := newChildren.push c
-        else
-          let curFuel ← get
-          if curFuel > 0 then
-            let expanded ← expandSorrysDepth c
-            newChildren := newChildren.push expanded
-          else
-            newChildren := newChildren.push (← sorryStx)
-            break
-      return .node i `Lean.Parser.Tactic.tacticSeq1Indented #[
-        .node ci `null (newChildren.append #[← sorryStx])
-      ]
-    | _ => panic "Unexpected syntax structure"
-
-  | 0, .node i k a => do
-    return .node i k (← a.mapM (fun c => expandSorrysDepth c))
-  | f+1, .node i k a => do
-    if (isTactic stx).isSome then
-      set f
-      return .node i k (← a.mapM (fun c => expandSorrysDepth c))
-    else
-      return .node i k (← a.mapM (fun c => expandSorrysDepth c))
-  | _, s => return s
-
-
-
+#eval (expandDepth test1 8)
+#eval (expandBreadth test1 8)
 
 def foo : MetaM Syntax := `(term| by
   cases n with
@@ -373,27 +209,9 @@ def foo : MetaM Syntax := `(term| by
     simp_all)
 
 
+#eval (expandDepth foo 6)
+#eval (expandBreadth foo 3)
 
-
-def stripBreadth (m: MetaM Syntax)(d w : Nat) : MetaM Format := do
-  let stx ← m
-  let newStx ← stripTacticsBreadth stx d w
-  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
-  return rendered
-
-
-
-def stripDepth (m: MetaM Syntax)(d w : Nat) : MetaM Format := do
-  let stx ← m
-  let newStx ← stripTacticsDepth stx d w
-  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
-  return rendered
-
-def expandDepth (m: MetaM Syntax)(d : Nat) : MetaM Format := do
-  let stx ← m
-  let (newStx, _) ← (expandSorrysDepth stx).run d
-  let rendered ← Lean.PrettyPrinter.ppCategory `term newStx
-  return rendered
 
 def foo1 : MetaM Syntax := `(term| by
   intros a b
@@ -404,22 +222,11 @@ def foo1 : MetaM Syntax := `(term| by
 
 #eval foo1
 
-def foo2 : MetaM Syntax := `(term| by
-  sorry
-)
 
-#eval (stripBreadth foo1 2 0)
+#eval (expandDepth foo1 3)
 
-#eval (stripDepth foo1 1 3)
+#eval (expandBreadth foo1 0)
 
-
-def baz : MetaM Syntax := `(term| by
-  {
-  intros a
-  sorry
-  })
-
-#eval baz
 
 def bar : MetaM Syntax := `(term| by
   intros Γ e τ ρ k hwt hws
@@ -527,8 +334,6 @@ def bar : MetaM Syntax := `(term| by
               cases b <;> contradiction
 )
 
-#eval (expandDepth bar 10)
+#eval (expandDepth bar 50)
 
-#eval (stripBreadth bar 0 3)
-
-#eval (stripDepth bar 2 7)
+#eval (expandBreadth bar 50)
