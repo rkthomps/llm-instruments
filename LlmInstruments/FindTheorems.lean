@@ -165,10 +165,10 @@ def theoremInfosFromState (state : Frontend.State) (ctx : InputContext): IO (Arr
     return theorems
 
 
-unsafe def findTheorems (file : String) : IO (Except String (Array TheoremInfoAndStx)) := do
+unsafe def findTheorems (file : String) : IO (Except String (Environment × Array TheoremInfoAndStx)) := do
   let fileResult? ← runFile file
   match fileResult? with
   | Except.error e => return Except.error e
   | Except.ok (state, ctx) =>
     let theorems ← theoremInfosFromState state ctx
-    return Except.ok theorems
+    return Except.ok (state.commandState.env, theorems)
