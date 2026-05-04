@@ -170,4 +170,11 @@ def bar : MetaM Syntax := `(term| by
 #eval (showExpanded selectDepth 50 bar)
 #eval (showExpanded selectBreadth 50 bar)
 
-#eval (showExpanded (selectDepthWeighted (-1) 1.0) 30 (seed := 4) bar)
+#eval (showExpanded (selectDepthWeighted (-1) 1.0) 30 (seed := 6) bar)
+
+def countExpands (mstx : MetaM Syntax) : MetaM Nat := do
+  let stx ← mstx
+  let hstx := createInitialHiddenTacticSyntax stx
+  return hstx.getExpandRange
+
+#eval (countExpands bar)
