@@ -102,7 +102,7 @@ partial def getExpandCandidates
   | .raw _ => return #[]
   | .node info k args =>
     let mut candidates := #[]
-    for (a, i) in args.zipIdx do
+    for (a, i) in args.zipWithIndex do
       let newReconstructFn childHidden := reconstructFn (.node info k (args.set! i childHidden))
       candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
     return candidates
@@ -112,7 +112,7 @@ partial def getExpandCandidates
     let remainingChildren := countHiddenChildren args[hideIdx:].toArray
     if remainingChildren <= 1 then
       let mut candidates := #[]
-      for (a, i) in args[:hideIdx].toArray.zipIdx do
+      for (a, i) in args[:hideIdx].toArray.zipWithIndex do
         let newReconstructFn childHidden := reconstructFn (.node info `null (args.set! i childHidden))
         candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
       let visitIdx ← get
@@ -122,7 +122,7 @@ partial def getExpandCandidates
     else
       let mut nextHideIdx := none
       let mut candidates := #[]
-      for (a, i) in args.zipIdx do
+      for (a, i) in args.zipWithIndex do
         if i < hideIdx then
           let newReconstructFn childHidden := reconstructFn (.hiddenChildren info (args.set! i childHidden) hideIdx)
           candidates := candidates.append (← getExpandCandidates a (depth + 1) newReconstructFn)
