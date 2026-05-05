@@ -4,3 +4,4 @@ import LlmInstruments.TheoremCharacterization
 import LlmInstruments.FindTheorems
 import LlmInstruments.RunFile
 import LlmInstruments.FindTheoremsLsp
+import LlmInstruments.ProofPrefix
