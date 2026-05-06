@@ -4,15 +4,17 @@ import LlmInstruments
 open Lean
 namespace LlmInstruments
 
-structure TheoremInfoArguments where
-  filePath : String
-
 structure ProofSampleArguments where
   expandProportion : Float
   depthWeight : Float -- > 0 means prefer deeper nodes, < 0 means prefer shallower nodes
   temperature : Float -- 0: always pick the best candidate, higher values increase randomness
   seed : Nat
-deriving Lean.ToJson
+deriving Lean.ToJson, Lean.FromJson
+
+
+structure TheoremInfoArguments where
+  filePath : String
+  samples : List ProofSampleArguments
 
 
 structure ProofSample where
@@ -20,24 +22,6 @@ structure ProofSample where
   sample : String
   arguments : ProofSampleArguments
 deriving Lean.ToJson
-
-
-def depthSampleArguments (proportion : Float) : ProofSampleArguments :=
-  { expandProportion := proportion, depthWeight := 1.0, temperature := 0.0, seed := 0 }
-
-def breadthSampleArguments (proportion : Float) : ProofSampleArguments :=
-  { expandProportion := proportion, depthWeight := -1.0, temperature := 0.0, seed := 0 }
-
-
--- instance : Monad List where
---   pure := pu
---   bind := List.bind
--- instance : Monad List := inferInstance
-
-
-def defaultSampleQueries : List ProofSampleArguments :=
-  [0.25, 0.5, 0.75].flatMap fun p =>
-    [depthSampleArguments p, breadthSampleArguments p]
 
 
 structure ExtendedTheoremInfo extends TheoremInfo where
@@ -55,11 +39,11 @@ def runHeartbeatCommand : IO Unit := do
   return ()
 
 
-def extendTheoremInfo (ti : TheoremInfoAndStx) : MetaM ExtendedTheoremInfo := do
+def extendTheoremInfo (sampleArgs : List ProofSampleArguments) (ti : TheoremInfoAndStx) : MetaM ExtendedTheoremInfo := do
   let bagOfTactics := getTactics ti.stx
   let initialHidden := createInitialHiddenTacticSyntax ti.stx
   let numExpands := initialHidden.getExpandRange
-  let samples : List ProofSample ← defaultSampleQueries.mapM fun args => do
+  let samples : List ProofSample ← sampleArgs.mapM fun args => do
     let sampleStx ← expandProportion ti.stx args.expandProportion (selectDepthWeighted args.depthWeight args.temperature) args.seed
     let groundTruth ← Lean.PrettyPrinter.ppCategory `command ti.stx
     let sample ← Lean.PrettyPrinter.ppCategory `command sampleStx
@@ -79,7 +63,7 @@ unsafe def runTheoremInfoCommand (args : TheoremInfoArguments) : IO Unit := do
   match result with
   | Except.error e => throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
   | Except.ok (env, ti) =>
-    let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo ti))
+    let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo args.samples ti))
     IO.print (Lean.toJson extendedInfos)
 
 
@@ -93,10 +77,33 @@ unsafe def runCommand : Command → IO Unit
   | .theoremInfo args => runTheoremInfoCommand args
 
 
-def parseTheoremInfoArgs (args : List String) : IO TheoremInfoArguments := do
-  match args with
-  | [filePath] => return {filePath := filePath}
-  | _ => throw (IO.userError "Expected single file as argument to parseTheoremInfoArgs")
+def parseSampleArg (s : String) : IO ProofSampleArguments := do
+  match Lean.Json.parse s with
+  | Except.error e => throw (IO.userError s!"Invalid JSON for --sample: {e}")
+  | Except.ok j =>
+    match Lean.fromJson? (α := ProofSampleArguments) j with
+    | Except.error e => throw (IO.userError s!"--sample JSON did not match ProofSampleArguments: {e}")
+    | Except.ok args => return args
+
+partial def parseTheoremInfoArgs (args : List String) : IO TheoremInfoArguments := do
+  let rec go (rest : List String) (filePath : Option String) (samples : Array ProofSampleArguments)
+      : IO TheoremInfoArguments := do
+    match rest with
+    | [] =>
+      match filePath with
+      | none => throw (IO.userError "theorem-info requires a file path")
+      | some fp => return { filePath := fp, samples := samples.toList }
+    | "--sample" :: jsonStr :: rest' =>
+      let parsed ← parseSampleArg jsonStr
+      go rest' filePath (samples.push parsed)
+    | "--sample" :: [] => throw (IO.userError "--sample requires a JSON argument")
+    | arg :: rest' =>
+      if arg.startsWith "--" then
+        throw (IO.userError s!"Unknown flag: {arg}")
+      match filePath with
+      | some _ => throw (IO.userError s!"Unexpected positional argument: {arg}")
+      | none => go rest' (some arg) samples
+  go args none #[]
 
 
 def parseArgs (args : List String) : IO Command := do
