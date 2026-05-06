@@ -24,21 +24,6 @@ structure ProofSample where
 deriving Lean.ToJson
 
 
-<<<<<<< HEAD
-def depthSampleArguments (proportion : Float) : ProofSampleArguments :=
-  { expandProportion := proportion, depthWeight := 1.0, temperature := 0.0, seed := 0 }
-
-def breadthSampleArguments (proportion : Float) : ProofSampleArguments :=
-  { expandProportion := proportion, depthWeight := -1.0, temperature := 0.0, seed := 0 }
-
-
-def defaultSampleQueries : List ProofSampleArguments :=
-  [0.25, 0.5, 0.75].flatMap fun p =>
-    [depthSampleArguments p, breadthSampleArguments p]
-
-
-=======
->>>>>>> main
 structure ExtendedTheoremInfo extends TheoremInfo where
   bagOfTactics : List TacticInfo
   numExpands : Nat
