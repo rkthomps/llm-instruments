@@ -22,6 +22,7 @@ deriving ToJson, FromJson
 
 structure TheoremInfoAndStx extends TheoremInfo where
   stx : Syntax
+  valStx : Syntax
 
 
 def validateTopLevelInfoTrees (trees : Lean.PersistentArray InfoTree) : Except String Unit := do
@@ -113,7 +114,7 @@ def checkForTheoremInfo (i : Info) (c : Lean.PersistentArray InfoTree) (contextI
           valRange := valRange,
           range := range
         }
-        return { ti with stx := stx }
+        return { ti with stx := stx, valStx := dVal.raw }
       return theoremRange?
     | _ => return none
   | _ => return none
