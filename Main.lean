@@ -45,7 +45,7 @@ def extendTheoremInfo (sampleArgs : List ProofSampleArguments) (ti : TheoremInfo
   let numExpands := initialHidden.getExpandRange
   let samples : List ProofSample ← sampleArgs.mapM fun args => do
     let sampleStx ← expandProportion ti.valStx args.expandProportion (selectDepthWeighted args.depthWeight args.temperature) args.seed
-    let groundTruth ← Lean.PrettyPrinter.ppCategory `command ti.stx
+    let groundTruth ← Lean.PrettyPrinter.ppCategory `command ti.valStx
     let sample ← Lean.PrettyPrinter.ppCategory `command sampleStx
     return { groundTruth := toString groundTruth, sample := toString sample, arguments := args }
   return { ti.toTheoremInfo with bagOfTactics, numExpands, samples }
