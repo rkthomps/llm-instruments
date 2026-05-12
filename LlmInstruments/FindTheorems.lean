@@ -1,5 +1,6 @@
 
 import LlmInstruments.RunFile
+import LlmInstruments.Common
 
 import Lean
 import Lean.Parser.Command
@@ -29,9 +30,9 @@ def validateTopLevelInfoTrees (trees : Lean.PersistentArray InfoTree) : Except S
   for t in trees do
     match t with
     | .context _ _ => continue
-    | .node _ _ => Except.error s!"Expected only context nodes in the top level info trees but found a .node"
-    | .hole _ => Except.error s!"Expected only context nodes in the top level info trees but found a .hole"
-  Except.ok ()
+    | .node _ _ => throw s!"Expected only context nodes in the top level info trees but found a .node"
+    | .hole _ => throw s!"Expected only context nodes in the top level info trees but found a .hole"
+  return ()
 
 
 #check Lean.Server.registerLspRequestHandler
@@ -95,7 +96,11 @@ partial def findParentDecls (iTree : InfoTree) : List Name :=
 #check Lean.Parser.Command.declaration
 #check Lean.Parser.Command.declId
 
-def checkForTheoremInfo (i : Info) (c : Lean.PersistentArray InfoTree) (contextInfo : Option ContextInfo) (inputCtx : Lean.Parser.InputContext): IO (Option TheoremInfoAndStx) := do
+def checkForTheoremInfo
+  (i : Info)
+  (c : Lean.PersistentArray InfoTree)
+  (contextInfo : Option ContextInfo)
+  (inputCtx : Lean.Parser.InputContext) : IO (Option TheoremInfoAndStx) := do
   match i with
   | .ofCommandInfo e =>
     let ⟨_, stx⟩ := e
@@ -121,55 +126,32 @@ def checkForTheoremInfo (i : Info) (c : Lean.PersistentArray InfoTree) (contextI
 
 
 
-#check Info
-#check PartialContextInfo
-partial def traverseITree
-  (t : InfoTree)
-  (contextInfo : Option ContextInfo)
-  (inputCtx: InputContext): IO (Option TheoremInfoAndStx):= do
-  match t with
-  | .node i c =>
-    let ti? ← checkForTheoremInfo i c contextInfo inputCtx
-    if let some ti := ti? then
-      return ti
-    -- Continue traversal
-    for ch in c do
-      let ti? ← traverseITree ch contextInfo inputCtx
-      if let some ti := ti? then
-        return ti
-    return none
-
-
-  | .context partialInfo t =>
-    let newContext := partialInfo.mergeIntoOuter? contextInfo
-    traverseITree t newContext inputCtx
-
-  | .hole _ =>
-    return none
-
-
-
 #check InfoTree
 #check InfoTree.format
 -- def theoremInfosFromState (state : Frontend.State) : IO (List TheoremInfo) :=
-def theoremInfosFromState (state : Frontend.State) (ctx : InputContext): IO (Array TheoremInfoAndStx) := do
+def theoremInfosFromState
+  (state : Frontend.State)
+  (ctx : InputContext) : ExceptT String IO (Array TheoremInfoAndStx) := do
   let infoTrees := state.commandState.infoState.trees
-  dbg_trace s!"Got {infoTrees.size} info trees"
-  if let Except.error s := validateTopLevelInfoTrees infoTrees then
-    panic! s!"{s}\nAssumption about top level info trees invalid."
-  else
-    let mut theorems : Array TheoremInfoAndStx := #[]
-    for t in infoTrees do
-      let ti? ← traverseITree t none ctx
-      if let some ti := ti? then
-        theorems := theorems.push ti
-    return theorems
+  validateTopLevelInfoTrees infoTrees
+  let mut theorems : Array TheoremInfoAndStx := #[]
+  for t in infoTrees do
+    let ti? ← liftM (foldInfoTree foldFun none t none)
+    if let some ti := ti? then
+      theorems := theorems.push ti
+  return theorems
+
+  where
+    foldFun acc t contextInfo : IO (Option TheoremInfoAndStx) := do
+      match acc with
+      | some _ => return acc
+      | none =>
+        match t with
+        | .node i c => checkForTheoremInfo i c contextInfo ctx
+        | _ => return none
 
 
-unsafe def findTheorems (file : String) : IO (Except String (Environment × Array TheoremInfoAndStx)) := do
-  let fileResult? ← runFile file
-  match fileResult? with
-  | Except.error e => return Except.error e
-  | Except.ok (state, ctx) =>
-    let theorems ← theoremInfosFromState state ctx
-    return Except.ok (state.commandState.env, theorems)
+unsafe def findTheorems (file : String) : ExceptT String IO (Environment × Array TheoremInfoAndStx) := do
+  let (state, ctx) ← runFile file
+  let theorems ← theoremInfosFromState state ctx
+  return (state.commandState.env, theorems)

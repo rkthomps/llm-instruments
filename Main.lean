@@ -59,12 +59,12 @@ def runMetaM (env : Environment) (m : MetaM α) : IO α := do
 
 
 unsafe def runTheoremInfoCommand (args : TheoremInfoArguments) : IO Unit := do
-  let result ← findTheorems args.filePath
-  match result with
-  | Except.error e => throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
-  | Except.ok (env, ti) =>
-    let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo args.samples ti))
-    IO.print (Lean.toJson extendedInfos)
+  let (env, ti) ← try
+    IO.ofExcept (← findTheorems args.filePath)
+  catch e =>
+    throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
+  let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo args.samples ti))
+  IO.print (Lean.toJson extendedInfos)
 
 
 inductive Command where

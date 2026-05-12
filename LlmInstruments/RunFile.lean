@@ -23,7 +23,7 @@ Notes:
   - Can infer the workspace because this instrumentation will be running
     within the workspace.
 -/
-unsafe def runFile (file : String) : IO (Except String (Frontend.State × Parser.InputContext)) := do
+unsafe def runFile (file : String) : ExceptT String IO (Frontend.State × Parser.InputContext) := do
   let fileContents ← IO.FS.readFile file
   let fileCtx := Parser.mkInputContext fileContents file
   let (fileHeader, parState, messages) ← Parser.parseHeader fileCtx
@@ -31,15 +31,15 @@ unsafe def runFile (file : String) : IO (Except String (Frontend.State × Parser
   initSearchPath (← findSysroot)
   if messages.hasErrors then
     let errStr ← getErrorsStr messages
-    return Except.error s!"{errStr}\nThere was an error parsing the imports of file {file}"
+    throw s!"{errStr}\nThere was an error parsing the imports of file {file}"
 
   let (fileHeadEnv, fileMsgs)
     ← processHeader fileHeader {} messages fileCtx
 
   if fileMsgs.hasErrors then
     let errStr ← getErrorsStr fileMsgs
-    return Except.error s!"{errStr}\nThere was an error elaborating the imports of file {file}"
+    throw s!"{errStr}\nThere was an error elaborating the imports of file {file}"
 
   let sheetCmdState : Command.State := Command.mkState fileHeadEnv fileMsgs {}
   let sheetFrontEndState ← IO.processCommands fileCtx parState sheetCmdState
-  return (Except.ok (sheetFrontEndState, fileCtx))
+  return (sheetFrontEndState, fileCtx)
