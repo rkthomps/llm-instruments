@@ -24,13 +24,13 @@ inductive DeclInfo where
   | «class inductive» (name : Name)
   | «structure» (name : Name)
   | «class» (name : Name)
-deriving ToJson
+deriving ToJson, FromJson
 
 structure Decl where
   range : Range
   content : String
   info : DeclInfo
-deriving ToJson
+deriving ToJson, FromJson
 
 
 #check Lean.Parser.Command.declaration
