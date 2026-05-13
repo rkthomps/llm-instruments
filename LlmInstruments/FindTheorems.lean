@@ -40,56 +40,6 @@ def validateTopLevelInfoTrees (trees : Lean.PersistentArray InfoTree) : Except S
 #check Lean.Parser.Command.declaration
 
 
-def stxLspRange (stx: Syntax) (text: FileMap): Option Range :=
-  stx.getRange?.map (λ r => r.toLspRange text)
-
-
-/--
-  I'd prefer to do this, but if we want lemmas in the dataset, wed
-  have to include mathlib as a dep. Don't want to do that.
-    | `($_:declModifiers theorem $id:declId $sig:declSig $val:declVal) =>
--/
-def parseTheoremOrLemma (n: Name) (stx: Syntax) (fileMap: FileMap) : IO (Option TheoremInfo) := do
-  match stx with
-  | `($_:declModifiers theorem $id:declId $sig:declSig $val:declVal) =>
-    let declRange? := stxLspRange stx fileMap
-    let sigRange? := stxLspRange sig fileMap
-    let valRange? := stxLspRange val fileMap
-    match declRange?, sigRange?, valRange? with
-      | some dr, some sr, some vr =>
-        return some ⟨n.toString, dr, sr, vr⟩
-      | _, _, _ => return none
-  | _ =>
-    if stx.getKind == `lemma then
-      -- dbg_trace stx
-      let lemmaStx := stx[1]
-      let lemmaSig := lemmaStx[1]
-      let lemmaVal := lemmaStx[2]
-
-      let declRange? := stxLspRange stx fileMap
-      let sigRange? := stxLspRange lemmaSig fileMap
-      let valRange? := stxLspRange lemmaVal fileMap
-      match declRange?, sigRange?, valRange? with
-        | some dr, some sr, some vr =>
-          return some ⟨n.toString, dr, sr, vr⟩
-        | _, _, _ => return none
-
-    return none
-
-
-
-/--
-Returns a list of all parent decl names in the InfoTree
--/
-partial def findParentDecls (iTree : InfoTree) : List Name :=
-  match iTree with
-  | .node i c => c.foldl (fun acc el => acc ++ findParentDecls el) []
-  | .context (.parentDeclCtx n) t => n :: findParentDecls t
-  | .context _ t => findParentDecls t
-  | .hole _ => []
-
-
-
 
 #check Lean.Server.registerLspRequestHandler
 #check Lean.Name

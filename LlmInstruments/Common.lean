@@ -8,6 +8,10 @@ def Array.enumerate {α} (arr : Array α) : Array (Nat × α) :=
 
 namespace LlmInstruments
 
+open Lean in
+open Lean.Lsp in
+def stxLspRange (stx: Syntax) (text: FileMap): Option Range :=
+  stx.getRange?.map (λ r => r.toLspRange text)
 
 open Lean.Elab in
 partial def foldInfoTree [Monad m]

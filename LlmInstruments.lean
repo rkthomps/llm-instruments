@@ -2,5 +2,6 @@
 -- Import modules here that should be built as part of the library.
 import LlmInstruments.TheoremCharacterization
 import LlmInstruments.FindTheorems
+import LlmInstruments.FindDecls
 import LlmInstruments.RunFile
 import LlmInstruments.ProofPrefix
