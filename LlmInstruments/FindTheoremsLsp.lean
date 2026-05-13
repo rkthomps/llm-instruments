@@ -41,7 +41,7 @@ def theoremInfosFromTrees (infoTrees : Lean.PersistentArray InfoTree) (inputCtx 
     for t in infoTrees do
       let tFmt ← InfoTree.format t
       -- dbg_trace f!"{tFmt}"
-      let ti? ← traverseITree t none inputCtx
+      let ti? ← theoremInfoFromITree t inputCtx
       if let some ti := ti? then
         theorems := theorems.push ti.toTheoremInfo
     return theorems
