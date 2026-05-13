@@ -31,7 +31,6 @@ unsafe def testBagOfTactics : Test := {
     let thm := "Tests.testTheorem"
     let (_, theorems) ← panicOnError (← findTheorems file)
     let thmInfo ← panicOnNone (theorems.find? (fun t => t.name == thm)) "Theorem not found"
-    dbg_trace s!"{thmInfo.stx}"
     let tactics := getTactics thmInfo.stx
     if tactics != expected then
       throw (IO.userError s!"Expected {expected}, got {tactics}")
