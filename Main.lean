@@ -59,22 +59,37 @@ def runMetaM (env : Environment) (m : MetaM α) : IO α := do
 
 
 unsafe def runTheoremInfoCommand (args : TheoremInfoArguments) : IO Unit := do
-  let result ← findTheorems args.filePath
-  match result with
-  | Except.error e => throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
-  | Except.ok (env, ti) =>
-    let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo args.samples ti))
-    IO.print (Lean.toJson extendedInfos)
+  let (env, ti) ← try
+    IO.ofExcept (← findTheorems args.filePath)
+  catch e =>
+    throw (IO.userError s!"{e}\nCould not get theorem info for file {args.filePath}")
+  let extendedInfos : Array ExtendedTheoremInfo ← ti.mapM (fun ti => runMetaM env (extendTheoremInfo args.samples ti))
+  IO.print (Lean.toJson extendedInfos)
+
+
+structure DeclInfoArguments where
+  filePath : String
+
+
+unsafe def runDeclInfoCommand (args : DeclInfoArguments) : IO Unit := do
+  let (_, decls) ← try
+    dbg_trace "Running findDecls on file: {args.filePath}"
+    IO.ofExcept (← findDecls args.filePath)
+  catch e =>
+    throw (IO.userError s!"{e}\nCould not get declaration info for file {args.filePath}")
+  IO.print (Lean.toJson decls)
 
 
 inductive Command where
   | heartBeat
   | theoremInfo (args : TheoremInfoArguments)
+  | declInfo (args : DeclInfoArguments)
 
 
 unsafe def runCommand : Command → IO Unit
   | .heartBeat => runHeartbeatCommand
   | .theoremInfo args => runTheoremInfoCommand args
+  | .declInfo args => runDeclInfoCommand args
 
 
 def parseSampleArg (s : String) : IO ProofSampleArguments := do
@@ -106,12 +121,21 @@ partial def parseTheoremInfoArgs (args : List String) : IO TheoremInfoArguments 
   go args none #[]
 
 
+def parseDeclInfoArgs (args : List String) : IO DeclInfoArguments := do
+  match args with
+  | [filePath] => return { filePath }
+  | [] => throw (IO.userError "decl-info requires a file path")
+  | _ => throw (IO.userError s!"decl-info received too many arguments: {args}")
+
+
 def parseArgs (args : List String) : IO Command := do
   match args with
   | ["heartbeat"] => return Command.heartBeat
   | "theorem-info" :: args' =>
     return Command.theoremInfo (← parseTheoremInfoArgs args')
-  | _ => throw (IO.userError "Expected command: [heartbeat, theorem-info]")
+  | "decl-info" :: args' =>
+    return Command.declInfo (← parseDeclInfoArgs args')
+  | _ => throw (IO.userError "Expected command: [heartbeat, theorem-info, decl-info]")
 
 end LlmInstruments
 

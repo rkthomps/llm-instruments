@@ -3,11 +3,14 @@
 
 import Tests.Common
 import Tests.TestCharacterization
+import Tests.TestDecls
 
 namespace Tests
 
 unsafe def tests : List Test := [
-  testBagOfTactics
+  testBagOfTactics,
+  testDeclsCounts,
+  testDeclsNames
 ]
 
 end Tests

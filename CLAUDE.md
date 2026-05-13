@@ -42,7 +42,7 @@ The executable (`Main.lean`) exposes two CLI commands:
 
 ### Lemma handling
 
-`lemma` declarations require special handling because Lean's `lemma` keyword comes from Batteries (not imported here). `TestFile.lean` defines a custom `lemma` syntax macro that re-encodes lemmas as `theorem` declarations. In `FindTheorems.lean`, lemmas that don't match the `theorem` quote pattern are handled via a fallback that checks `stx.getKind == \`lemma` and manually indexes into the syntax array.
+`lemma` declarations require special handling because Lean's `lemma` keyword comes from Batteries (not imported here). `Tests/TestFiles/TestFile.lean` defines a custom `lemma` syntax macro that re-encodes lemmas as `theorem` declarations. In `FindTheorems.lean`, lemmas that don't match the `theorem` quote pattern are handled via a fallback that checks `stx.getKind == \`lemma` and manually indexes into the syntax array.
 
 ### Sampling internals
 
