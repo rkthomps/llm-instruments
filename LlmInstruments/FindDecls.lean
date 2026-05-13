@@ -41,70 +41,37 @@ def checkForDeclInfo
   match i with
   | .ofCommandInfo e =>
     let ⟨_, stx⟩ := e
-    match stx with
-    | `($_:declModifiers abbrev $id:declId $dSig:optDeclSig $dVal:declVal) =>
-      let decl : Option Decl := do
-        let name ← getName id contextInfo
-        let range ← stxLspRange stx inputCtx.fileMap
-        return Decl.«abbrev» name range
-      return decl
-    | `($_:declModifiers def $id:declId $dSig:optDeclSig $dVal:declVal) =>
-      let decl : Option Decl := do
-        let name ← getName id contextInfo
-        let range ← stxLspRange stx inputCtx.fileMap
-        return Decl.«def» name range
-      return decl
-    | `($_:declModifiers theorem $id:declId $dSig:declSig $dVal:declVal) =>
-      let decl : Option Decl := do
-        let name ← getName id contextInfo
-        let range ← stxLspRange stx inputCtx.fileMap
-        return Decl.«theorem» name range
-      return decl
-    | `($_:declModifiers opaque $id:declId $dSig:declSig $[$dVal:declValSimple]?) =>
-      let decl : Option Decl := do
-        let name ← getName id contextInfo
-        let range ← stxLspRange stx inputCtx.fileMap
-        return Decl.«opaque» name range
-      return decl
-    | `($_:declModifiers $_:attrKind instance $[$_:namedPrio]? $[$id:declId]? $dSig:declSig $dVal:declVal) =>
-      let decl : Option Decl := do
-        let range ← stxLspRange stx inputCtx.fileMap
-        let name := id >>= (getName · contextInfo)
-        return Decl.«instance» name range
-      return decl
-    | `($_:declModifiers axiom $id:declId $dSig:declSig) =>
-      let decl : Option Decl := do
-        let name ← getName id contextInfo
-        let range ← stxLspRange stx inputCtx.fileMap
-        return Decl.«axiom» name range
-      return decl
-    | `($_:declModifiers example $dSig:optDeclSig $dVal:declVal) =>
-      let decl : Option Decl := do
-        let range ← stxLspRange stx inputCtx.fileMap
-        return Decl.«example» range
-      return decl
-    | _ =>
-      -- inductive / classInductive / structure have too many optional
-      -- sub-pieces for reliable quotation matching; Lean's own elaborator
-      -- (Elab/Inductive.lean, Elab/Structure.lean) indexes positionally
-      -- on these too. The declId is at body[1] for all three.
-      let body := stx[1]
-      let mkDecl (ctor : Name → Range → Decl) : IO (Option Decl) := do
-        let decl : Option Decl := do
-          let name ← getName ⟨body[1]⟩ contextInfo
-          let range ← stxLspRange stx inputCtx.fileMap
-          return ctor name range
-        return decl
-      match body.getKind with
-      | ``Lean.Parser.Command.«inductive»   => mkDecl Decl.«inductive»
-      | ``Lean.Parser.Command.classInductive => mkDecl Decl.«class inductive»
-      | ``Lean.Parser.Command.«structure» =>
-        -- body[0] is structureTk or classTk; that picks the constructor.
-        if body[0].getKind == ``Lean.Parser.Command.classTk then
-          mkDecl Decl.«class»
-        else
-          mkDecl Decl.«structure»
-      | _ => return none
+    -- stx is a `Lean.Parser.Command.declaration`:
+    --   stx[0] = declModifiers,  stx[1] = the body (abbrev / def / ... / structure)
+    -- For every kind we care about, body[0] is the leading keyword atom and
+    -- body[1] is the declId (when present). The shape is what Lean's own
+    -- elaborators (Elab/{Definition,Inductive,Structure}.lean) rely on.
+    let body := stx[1]
+    let range? := stxLspRange stx inputCtx.fileMap
+    let named (idStx : Syntax) (ctor : Name → Range → Decl) : Option Decl := do
+      let name ← getName ⟨idStx⟩ contextInfo
+      let range ← range?
+      return ctor name range
+    let decl : Option Decl := match body.getKind with
+      | ``Command.«abbrev»       => named body[1] Decl.«abbrev»
+      | ``Command.definition     => named body[1] Decl.«def»
+      | ``Command.«theorem»      => named body[1] Decl.«theorem»
+      | ``Command.«opaque»       => named body[1] Decl.«opaque»
+      | ``Command.«axiom»        => named body[1] Decl.«axiom»
+      | ``Command.«inductive»    => named body[1] Decl.«inductive»
+      | ``Command.classInductive => named body[1] Decl.«class inductive»
+      | ``Command.«example»      => range?.map Decl.«example»
+      | ``Command.«instance»     =>
+        -- attrKind, "instance", optNamedPrio, optional declId, declSig, declVal
+        range?.map fun r =>
+          let name := body[3].getOptional?.bind fun id => getName ⟨id⟩ contextInfo
+          Decl.«instance» name r
+      | ``Command.«structure»    =>
+        let ctor :=
+          if body[0].getKind == ``Command.classTk then Decl.«class» else Decl.«structure»
+        named body[1] ctor
+      | _ => none
+    return decl
   | _ => return none
 
 
