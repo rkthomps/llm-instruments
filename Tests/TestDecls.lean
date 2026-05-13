@@ -6,7 +6,7 @@ namespace Tests
 open Lean
 open LlmInstruments
 
-def declKind : Decl → String
+def declKind : DeclInfo → String
   | .«abbrev» ..          => "abbrev"
   | .«def» ..             => "def"
   | .«theorem» ..         => "theorem"
@@ -19,24 +19,24 @@ def declKind : Decl → String
   | .«structure» ..       => "structure"
   | .«class» ..           => "class"
 
-def declName : Decl → Option Name
-  | .«abbrev» n _          => some n
-  | .«def» n _             => some n
-  | .«theorem» n _         => some n
-  | .«opaque» n _          => some n
-  | .«axiom» n _           => some n
-  | .«inductive» n _       => some n
-  | .«class inductive» n _ => some n
-  | .«structure» n _       => some n
-  | .«class» n _           => some n
-  | .«instance» n _        => n
-  | .«example» _           => none
+def declName : DeclInfo → Option Name
+  | .«abbrev» n          => some n
+  | .«def» n             => some n
+  | .«theorem» n         => some n
+  | .«opaque» n          => some n
+  | .«axiom» n           => some n
+  | .«inductive» n       => some n
+  | .«class inductive» n => some n
+  | .«structure» n       => some n
+  | .«class» n           => some n
+  | .«instance» n        => n
+  | .«example»           => none
 
 def countKind (decls : Array Decl) (kind : String) : Nat :=
-  decls.foldl (fun acc d => if declKind d == kind then acc + 1 else acc) 0
+  decls.foldl (fun acc d => if declKind d.info == kind then acc + 1 else acc) 0
 
 def hasNameKind (decls : Array Decl) (name : Name) (kind : String) : Bool :=
-  decls.any fun d => declKind d == kind && declName d == some name
+  decls.any fun d => declKind d.info == kind && declName d.info == some name
 
 
 unsafe def testDeclsCounts : Test := {

@@ -13,6 +13,12 @@ open Lean.Lsp in
 def stxLspRange (stx: Syntax) (text: FileMap): Option Range :=
   stx.getRange?.map (λ r => r.toLspRange text)
 
+
+open Lean in
+def getRangeStr (r : Range) (text : FileMap) : String :=
+  sorry
+
+
 open Lean.Elab in
 partial def foldInfoTree [Monad m]
   (f : α → InfoTree → Option ContextInfo → m α)

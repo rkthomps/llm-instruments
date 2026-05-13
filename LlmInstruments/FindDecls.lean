@@ -12,24 +12,32 @@ open Lean.Parser.Term
 
 namespace LlmInstruments
 
-inductive Decl where
-  | «abbrev» (name : Name) (range : Range)
-  | «def» (name : Name) (range : Range)
-  | «theorem» (name : Name) (range : Range)
-  | «opaque» (name : Name) (range : Range)
-  | «instance» (name : Option Name) (range : Range)
-  | «axiom» (name : Name) (range : Range)
-  | «example» (range : Range)
-  | «inductive» (name : Name) (range : Range)
-  | «class inductive» (name : Name) (range : Range)
-  | «structure» (name : Name) (range : Range)
-  | «class» (name : Name) (range : Range)
+inductive DeclInfo where
+  | «abbrev» (name : Name)
+  | «def» (name : Name)
+  | «theorem» (name : Name)
+  | «opaque» (name : Name)
+  | «instance» (name : Option Name)
+  | «axiom» (name : Name)
+  | «example»
+  | «inductive» (name : Name)
+  | «class inductive» (name : Name)
+  | «structure» (name : Name)
+  | «class» (name : Name)
+deriving ToJson
+
+structure Decl where
+  range : Range
+  content : String
+  info : DeclInfo
 deriving ToJson
 
 
 #check Lean.Parser.Command.declaration
 
-def getName (tstx : TSyntax `Lean.Parser.Command.declId) (contextInfo : Option ContextInfo) : Option Name := do
+def getName
+  (tstx : TSyntax `Lean.Parser.Command.declId)
+  (contextInfo : Option ContextInfo) : Option Name := do
   let idStx ← tstx.raw[0]?
   let cInfo ← contextInfo
   return cInfo.currNamespace.append idStx.getId
@@ -40,37 +48,45 @@ def checkForDeclInfo
   (inputCtx : InputContext) : IO (Option Decl) := do
   match i with
   | .ofCommandInfo e =>
-    let ⟨_, stx⟩ := e
-    -- stx is a `Lean.Parser.Command.declaration`:
-    --   stx[0] = declModifiers,  stx[1] = the body (abbrev / def / ... / structure)
-    -- For every kind we care about, body[0] is the leading keyword atom and
-    -- body[1] is the declId (when present). The shape is what Lean's own
-    -- elaborators (Elab/{Definition,Inductive,Structure}.lean) rely on.
-    let body := stx[1]
-    let range? := stxLspRange stx inputCtx.fileMap
-    let named (idStx : Syntax) (ctor : Name → Range → Decl) : Option Decl := do
-      let name ← getName ⟨idStx⟩ contextInfo
-      let range ← range?
-      return ctor name range
-    let decl : Option Decl := match body.getKind with
-      | ``Command.«abbrev»       => named body[1] Decl.«abbrev»
-      | ``Command.definition     => named body[1] Decl.«def»
-      | ``Command.«theorem»      => named body[1] Decl.«theorem»
-      | ``Command.«opaque»       => named body[1] Decl.«opaque»
-      | ``Command.«axiom»        => named body[1] Decl.«axiom»
-      | ``Command.«inductive»    => named body[1] Decl.«inductive»
-      | ``Command.classInductive => named body[1] Decl.«class inductive»
-      | ``Command.«example»      => range?.map Decl.«example»
-      | ``Command.«instance»     =>
-        -- attrKind, "instance", optNamedPrio, optional declId, declSig, declVal
-        range?.map fun r =>
-          let name := body[3].getOptional?.bind fun id => getName ⟨id⟩ contextInfo
-          Decl.«instance» name r
-      | ``Command.«structure»    =>
-        let ctor :=
-          if body[0].getKind == ``Command.classTk then Decl.«class» else Decl.«structure»
-        named body[1] ctor
-      | _ => none
+    let decl : Option Decl := do
+      let ⟨_, stx⟩ := e
+      -- stx is a `Lean.Parser.Command.declaration`:
+      --   stx[0] = declModifiers,  stx[1] = the body (abbrev / def / ... / structure)
+      -- For every kind we care about, body[0] is the leading keyword atom and
+      -- body[1] is the declId (when present). The shape is what Lean's own
+      -- elaborators (Elab/{Definition,Inductive,Structure}.lean) rely on.
+      let body := stx[1]
+      let cInfo ← contextInfo
+      let ⟨startPos, endPos⟩ ← stx.getRange?
+      let lspRange ← stxLspRange stx inputCtx.fileMap
+      let content := inputCtx.fileMap.source.extract startPos endPos
+      let named (declIdStx : Syntax) (ctor : Name → DeclInfo) : Option DeclInfo := do
+        let id ← declIdStx[0]?
+        let name := cInfo.currNamespace.append id.getId
+        return ctor name
+
+      let declInfo : DeclInfo ← match body.getKind with
+        | ``Command.«abbrev»       => named body[1] DeclInfo.«abbrev»
+        | ``Command.definition     => named body[1] DeclInfo.«def»
+        | ``Command.«theorem»      => named body[1] DeclInfo.«theorem»
+        | ``Command.«opaque»       => named body[1] DeclInfo.«opaque»
+        | ``Command.«axiom»        => named body[1] DeclInfo.«axiom»
+        | ``Command.«inductive»    => named body[1] DeclInfo.«inductive»
+        | ``Command.classInductive => named body[1] DeclInfo.«class inductive»
+        | ``Command.«example»      => DeclInfo.«example»
+        | ``Command.«instance»     => do
+          -- attrKind, "instance", optNamedPrio, optional declId, declSig, declVal
+          let declIdStx ← body[3].getOptional?
+          let idStx ← declIdStx[0]?
+          let name := cInfo.currNamespace.append idStx.getId
+          DeclInfo.«instance» name
+        | ``Command.«structure»    =>
+          let ctor :=
+            if body[0].getKind == ``Command.classTk then DeclInfo.«class» else DeclInfo.«structure»
+          named body[1] ctor
+        | _ => none
+
+      return ⟨lspRange, content, declInfo⟩
     return decl
   | _ => return none
 
