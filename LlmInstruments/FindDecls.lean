@@ -76,9 +76,10 @@ def checkForDeclInfo
         | ``Command.«example»      => DeclInfo.«example»
         | ``Command.«instance»     => do
           -- attrKind, "instance", optNamedPrio, optional declId, declSig, declVal
-          let declIdStx ← body[3].getOptional?
-          let idStx ← declIdStx[0]?
-          let name := cInfo.currNamespace.append idStx.getId
+          let name : Option Name := do
+            let declIdStx ← body[3].getOptional?
+            let idStx ← declIdStx[0]?
+            cInfo.currNamespace.append idStx.getId
           DeclInfo.«instance» name
         | ``Command.«structure»    =>
           let ctor :=
@@ -91,6 +92,16 @@ def checkForDeclInfo
   | _ => return none
 
 
+def declFromITree (t : InfoTree) (inputCtx : InputContext) : IO (Option Decl) := do
+  let foldFun acc t contextInfo : IO (Option Decl) := do
+    match acc with
+    | some _ => return acc
+    | none =>
+      match t with
+      | .node i _ => checkForDeclInfo i contextInfo inputCtx
+      | _ => return none
+  foldInfoTree foldFun none t none
+
 def declsFromState
   (state : Frontend.State)
   (ctx : Parser.InputContext) : ExceptT String IO (Array Decl) := do
@@ -98,19 +109,10 @@ def declsFromState
   let mut decls : Array Decl := #[]
 
   for t in infoTrees do
-    let ti? ← liftM (foldInfoTree foldFun none t none)
+    let ti? ← declFromITree t ctx
     if let some decl := ti? then
       decls := decls.push decl
   return decls
-
-  where
-    foldFun acc t contextInfo : IO (Option Decl) := do
-      match acc with
-      | some _ => return acc
-      | none =>
-        match t with
-        | .node i _ => checkForDeclInfo i contextInfo ctx
-        | _ => return none
 
 
 unsafe def findDecls

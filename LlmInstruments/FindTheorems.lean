@@ -75,6 +75,17 @@ def checkForTheoremInfo
   | _ => return none
 
 
+def theoremInfoFromITree (t : InfoTree) (inputCtx : InputContext)
+  : IO (Option TheoremInfoAndStx) := do
+  let foldFun acc t contextInfo : IO (Option TheoremInfoAndStx) := do
+    match acc with
+    | some _ => return acc
+    | none =>
+      match t with
+      | .node i c => checkForTheoremInfo i c contextInfo inputCtx
+      | _ => return none
+  foldInfoTree foldFun none t none
+
 
 #check InfoTree
 #check InfoTree.format
@@ -86,19 +97,10 @@ def theoremInfosFromState
   validateTopLevelInfoTrees infoTrees
   let mut theorems : Array TheoremInfoAndStx := #[]
   for t in infoTrees do
-    let ti? ← liftM (foldInfoTree foldFun none t none)
+    let ti? ← theoremInfoFromITree t ctx
     if let some ti := ti? then
       theorems := theorems.push ti
   return theorems
-
-  where
-    foldFun acc t contextInfo : IO (Option TheoremInfoAndStx) := do
-      match acc with
-      | some _ => return acc
-      | none =>
-        match t with
-        | .node i c => checkForTheoremInfo i c contextInfo ctx
-        | _ => return none
 
 
 unsafe def findTheorems (file : String) : ExceptT String IO (Environment × Array TheoremInfoAndStx) := do
