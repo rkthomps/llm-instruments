@@ -1,5 +1,5 @@
 # llm-instruments
-This repo provides the following, humble functionality.
+This repo provides the following, humble functionality:
 
 ### Collecting theorem names, statements, and file locations. 
 
