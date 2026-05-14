@@ -35,7 +35,7 @@ def handleInfoTreesTask
   : α → RequestM (RequestTask β) := fun _ => do
   let doc ← readDoc
   let t := doc.cmdSnaps.waitAll
-  mapTaskCostly t fun (snaps, _) => do
+  mapTask t fun (snaps, _) => do
     snaps.foldlM (fun acc snap => do
       let info ← runCommandElabM snap (liftM (runHandler handler))
       return (combine acc info)
