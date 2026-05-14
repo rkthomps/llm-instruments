@@ -1,6 +1,7 @@
 
 import Lean
 import LlmInstruments.FindTheorems
+import LlmInstruments.LspCommon
 
 
 namespace LlmInstruments
@@ -26,57 +27,36 @@ structure FindTheoremsResult where
   deriving FromJson, ToJson
 
 
+
 #check Snapshots.Snapshot
 
 
 #check Command.Context
 #check RequestT
 
-def theoremInfosFromTrees (infoTrees : Lean.PersistentArray InfoTree) (inputCtx : Parser.InputContext) : IO (Array TheoremInfo) := do
+
+def theoremInfosFromTrees (infoTrees : Lean.PersistentArray InfoTree) (inputCtx : Parser.InputContext)
+  : IO (Array TheoremInfo) := do
   -- dbg_trace s!"Got {infoTrees.size} info trees"
   if let Except.error s := validateTopLevelInfoTrees infoTrees then
     panic! s!"{s}\nAssumption about top level info trees invalid."
   else
     let mut theorems : Array TheoremInfo := #[]
     for t in infoTrees do
-      let tFmt ← InfoTree.format t
-      -- dbg_trace f!"{tFmt}"
       let ti? ← theoremInfoFromITree t inputCtx
       if let some ti := ti? then
         theorems := theorems.push ti.toTheoremInfo
     return theorems
 
-#check Context
 
-def handleFindTheoremsCommand : CommandElabM FindTheoremsResult := do
-  let ctx ← read
-  let st ← get
-  let map := ctx.fileMap
-  let trees := st.infoState.trees
-  let inputCtx : Parser.InputContext := { input := "", fileName := ctx.fileName, fileMap := ctx.fileMap }
+def theoremInfosHandler (trees : Lean.PersistentArray InfoTree) (inputCtx : Parser.InputContext)
+  : IO FindTheoremsResult := do
   let result ← theoremInfosFromTrees trees inputCtx
-  let theoremResult : FindTheoremsResult := { theorems := result }
-  return theoremResult
+  return { theorems := result }
 
-def handleFindTheoremsReqT : RequestT CommandElabM FindTheoremsResult := do
-  liftM handleFindTheoremsCommand
+def theoremInfosCombine (r1 r2 : FindTheoremsResult) : FindTheoremsResult :=
+  { theorems := r1.theorems ++ r2.theorems }
 
+def theoremInfosInit : FindTheoremsResult := { theorems := #[] }
 
-def runSnapShots (snaps : List Snapshots.Snapshot) : RequestM FindTheoremsResult := do
-    match snaps with
-    | [] => return ⟨#[]⟩
-    | s :: ss =>
-      let sInfo ← runCommandElabM s handleFindTheoremsReqT
-      let rest ← runSnapShots ss
-      return { theorems := (sInfo.theorems ++ rest.theorems) }
-
-
-open Lean.Server in
-open Lean.Server.RequestM in
-partial def handleFindTheorems (_ : FindTheoremsParams)
-    : RequestM (RequestTask FindTheoremsResult) := do
-  let doc ← readDoc
-  -- bad: we have to wait on elaboration of the entire file before we can report document symbols
-  let t := doc.cmdSnaps.waitAll
-  mapTask t fun (snaps, _) => do
-    runSnapShots snaps
+def handleFindTheorems := handleInfoTreesTask (α := FindTheoremsParams) theoremInfosInit theoremInfosCombine theoremInfosHandler

@@ -1,5 +1,6 @@
 import Lean
-import LlmInstruments
+import LlmInstruments.FindTheoremsLsp
+import LlmInstruments.FindDeclsLsp
 
 open LlmInstruments
 
