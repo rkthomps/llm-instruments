@@ -20,7 +20,7 @@ def runHandler (handler : PersistentArray InfoTree → InputContext → IO β)
   let st ← get
   let trees ← pure st.infoState.trees
   let inputCtx : Parser.InputContext := {
-    inputString := "",
+    input := "",
     fileName := ctx.fileName,
     fileMap := ctx.fileMap
   }

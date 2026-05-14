@@ -17,7 +17,7 @@ structure FindDeclsParams where
   deriving FromJson, ToJson
 
 instance : FileSource FindDeclsParams where
-  fileSource p := .uri p.textDocument.uri
+  fileSource p := p.textDocument.uri
 
 structure FindDeclsResult where
   decls : Array Decl
