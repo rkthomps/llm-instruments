@@ -14,7 +14,7 @@ def stxLspRange (stx: Syntax) (text: FileMap): Option Range :=
   stx.getRange?.map (λ r => r.toLspRange text)
 
 open Lean.Elab in
-partial def foldInfoTree [Monad m]
+partial def foldInfoTree [Monad m] [Inhabited α]
   (f : α → InfoTree → Option ContextInfo → m α)
   (acc : α)
   (t : InfoTree)
