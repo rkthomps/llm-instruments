@@ -21,8 +21,8 @@ unsafe def testBagOfTactics : Test := {
     let expected : List TacticInfo := [
       { name := "cases", kind := "Lean.Parser.Tactic.cases" },
       { name := "simp", kind := "Lean.Parser.Tactic.simp" },
-      { name := "have", kind := "Lean.Parser.Tactic.tacticHave_" },
-      { name := "have", kind := "Lean.Parser.Tactic.tacticHave_" },
+      { name := "have", kind := "Lean.Parser.Tactic.tacticHave__" },
+      { name := "have", kind := "Lean.Parser.Tactic.tacticHave__" },
       { name := "trivial", kind := "Lean.Parser.Tactic.tacticTrivial" },
       { name := "simp_all", kind := "Lean.Parser.Tactic.simpAll" }
     ]

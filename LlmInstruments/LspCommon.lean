@@ -20,7 +20,7 @@ def runHandler (handler : PersistentArray InfoTree → InputContext → IO β)
   let st ← get
   let trees ← pure st.infoState.trees
   let inputCtx : Parser.InputContext := {
-    input := "",
+    inputString := "",
     fileName := ctx.fileName,
     fileMap := ctx.fileMap
   }
@@ -35,7 +35,7 @@ def handleInfoTreesTask
   : α → RequestM (RequestTask β) := fun _ => do
   let doc ← readDoc
   let t := doc.cmdSnaps.waitAll
-  mapTask t fun (snaps, _) => do
+  mapTaskCostly t fun (snaps, _) => do
     snaps.foldlM (fun acc snap => do
       let info ← runCommandElabM snap (liftM (runHandler handler))
       return (combine acc info)

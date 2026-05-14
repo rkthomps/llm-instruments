@@ -57,9 +57,8 @@ def checkForDeclInfo
       -- elaborators (Elab/{Definition,Inductive,Structure}.lean) rely on.
       let body := stx[1]
       let cInfo ← contextInfo
-      let ⟨startPos, endPos⟩ ← stx.getRange?
+      let content ← syntaxContent stx inputCtx.fileMap
       let lspRange ← stxLspRange stx inputCtx.fileMap
-      let content := inputCtx.fileMap.source.extract startPos endPos
       let named (declIdStx : Syntax) (ctor : Name → DeclInfo) : Option DeclInfo := do
         let id ← declIdStx[0]?
         let name := cInfo.currNamespace.append id.getId
