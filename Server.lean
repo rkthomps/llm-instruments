@@ -11,6 +11,11 @@ builtin_initialize
     FindTheoremsParams
     FindTheoremsResult
     handleFindTheorems
+  registerLspRequestHandler
+    "$/lean/findDecls"
+    FindDeclsParams
+    FindDeclsResult
+    handleFindDecls
 
 def myFindWorkerPath : IO System.FilePath := do
   let mut workerPath ← IO.appPath
