@@ -4,6 +4,13 @@ This repo provides the following, humble functionality:
 - Stripping the proofs of theorems. 
 - Checking the validity of proofs & the axioms they depend on. 
 
+## Setup
+You must run this if you are developing:
+```bash
+git config merge.ours.driver true
+```
+It allows us to effectively merge changes to all branches 
+
 ## Branch to Version Map 
 | branch | toolchain | supported toolchains | 
 |---|---|--|
