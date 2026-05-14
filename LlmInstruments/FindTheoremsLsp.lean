@@ -20,7 +20,7 @@ structure FindTheoremsParams where
   deriving FromJson, ToJson
 
 instance : FileSource FindTheoremsParams where
-  fileSource p := p.textDocument.uri
+  fileSource p := .uri p.textDocument.uri
 
 structure FindTheoremsResult where
   theorems : Array TheoremInfo
