@@ -19,7 +19,7 @@ structure TheoremInfo where
   range : Range     -- Range of the entire declaration
   sigRange : Range  -- Range of the theorem signature
   valRange : Range  -- Range of the theorem value (proof)
-deriving ToJson
+deriving ToJson, FromJson
 
 structure TheoremInfoAndStx extends TheoremInfo where
   stx : Syntax

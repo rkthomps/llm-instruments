@@ -11,6 +11,11 @@ lean_exe «llm-instruments» {
   supportInterpreter := true
 }
 
+lean_exe «llm-instruments-server» {
+  root := `Server
+  supportInterpreter := true
+}
+
 lean_lib Tests
 
 lean_exe «test» {
