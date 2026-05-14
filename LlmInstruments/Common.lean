@@ -36,7 +36,7 @@ def syntaxContent (stx : Syntax) (map : FileMap) : Option String := do
   let ⟨startPosRaw, endPosRaw⟩ ← stx.getRange?
   let startPos ← map.source.pos? startPosRaw
   let endPos ← map.source.pos? endPosRaw
-  return map.source.extract startPos endPos
+  return String.ValidPos.extract startPos endPos
 
 
 end LlmInstruments
