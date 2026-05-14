@@ -25,7 +25,7 @@ for b in "${BRANCHES[@]}"; do
     continue
   fi
 
-  if ./check-versions.sh VERSIONS.txt; then
+  if bash check-versions.sh VERSIONS.txt; then
     RESULTS[$b]="OK (merge kept)"
   else
     git reset --hard "$pre"          # roll the merge back, leave branch untouched
