@@ -34,9 +34,7 @@ open Lean in
 open Lean.Parser in
 def syntaxContent (stx : Syntax) (map : FileMap) : Option String := do
   let ⟨startPosRaw, endPosRaw⟩ ← stx.getRange?
-  let startPos ← map.source.pos? startPosRaw
-  let endPos ← map.source.pos? endPosRaw
-  return String.ValidPos.extract startPos endPos
+  return map.source.extract startPosRaw endPosRaw
 
 
 end LlmInstruments
