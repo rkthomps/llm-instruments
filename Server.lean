@@ -43,6 +43,11 @@ def main (args : List String): IO Unit := do
   let myWorkerPath ← myFindWorkerPath
   let workerPath ← Lean.Server.Watchdog.findWorkerPath
   dbg_trace s!"Starting LLM instruments server at {appPath}; worker at {workerPath}; myworker at {myWorkerPath}; sysroot {sysroot}"
+  -- Lean ≥ 4.24 no longer initializes `searchPathRef` from `LEAN_PATH` inside
+  -- `workerMain`/`watchdogMain`. Custom worker binaries must do it themselves
+  -- or the worker boots with an empty search path and every `import` fails
+  -- with "unknown module prefix" before user code is reached.
+  Lean.searchPathRef.set (← Lean.addSearchPathFromEnv {})
   match args with
   | [] =>
     let _ ← Lean.Server.Watchdog.watchdogMain []
