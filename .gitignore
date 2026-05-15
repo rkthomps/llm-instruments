@@ -4,4 +4,6 @@
 
 /.claude
 
+# Utils
 add-attrs.sh
+push.sh
