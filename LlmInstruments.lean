@@ -7,3 +7,4 @@ import LlmInstruments.RunFile
 import LlmInstruments.ProofPrefix
 import LlmInstruments.FindTheoremsLsp
 import LlmInstruments.FindDeclsLsp
+import LlmInstruments.InitSentinel

@@ -36,13 +36,19 @@ def myFindWorkerPath : IO System.FilePath := do
     }
 -/
 
-def main (args : List String): IO Unit := do
+unsafe def main (args : List String): IO Unit := do
   let _ ← Lean.findSysroot
   let sysroot ← IO.getEnv "LEAN_SYSROOT"
   let appPath ← IO.appPath
   let myWorkerPath ← myFindWorkerPath
   let workerPath ← Lean.Server.Watchdog.findWorkerPath
   dbg_trace s!"Starting LLM instruments server at {appPath}; worker at {workerPath}; myworker at {myWorkerPath}; sysroot {sysroot}"
+  -- Custom worker binaries don't get the stock worker's startup. Besides the
+  -- search path (below), they must enable execution of imported modules'
+  -- `initialize`/`[init]` code, or any imported `initialize`d `IO.Ref`
+  -- (e.g. Velvet's `globalMutVarsCtx`) is left uninitialized and the first
+  -- elaboration that reads it crashes the worker.
+  Lean.enableInitializersExecution
   -- Lean ≥ 4.24 no longer initializes `searchPathRef` from `LEAN_PATH` inside
   -- `workerMain`/`watchdogMain`. Custom worker binaries must do it themselves
   -- or the worker boots with an empty search path and every `import` fails

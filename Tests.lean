@@ -12,7 +12,8 @@ unsafe def tests : List Test := [
   testBagOfTactics,
   testDeclsCounts,
   testDeclsNames,
-  testLspWorkerSearchPath
+  testLspWorkerSearchPath,
+  testLspWorkerInitializers
 ]
 
 end Tests
